@@ -32,7 +32,6 @@ class VK:
             count += 1
             if count == numb_of_img:
                 break
-
         return photos_dict
 
     def sort_photos(self):
