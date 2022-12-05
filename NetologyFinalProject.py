@@ -24,25 +24,40 @@ class VK:
         response = requests.get(url, params={**self.params, **params}).json()
         photos_dict = {}
         count = 0
-        for each_photo in response['response']['items']:
-            if str(each_photo['likes']['count']) not in photos_dict.keys():
-                photos_dict[str(each_photo['likes']['count'])] = each_photo['sizes']
+        try:
+            for each_photo in response['response']['items']:
+                if str(each_photo['likes']['count']) not in photos_dict.keys():
+                    photos_dict[str(each_photo['likes']['count'])] = each_photo['sizes']
+                else:
+                    photos_dict[str(each_photo['likes']['count']) + ' ' + datetime.utcfromtimestamp(each_photo['date']).strftime('%d.%m.%Y')] = each_photo['sizes']
+                count += 1
+                if count == numb_of_img:
+                    break
+            return photos_dict
+        except KeyError:
+            if response['error']['error_code'] == 100:
+                print('Указан некорректный ID пользователя VK')
+            elif response['error']['error_code'] == 1116:
+                print('Указан некорректный токен ВК')
+            elif response['error']['error_code'] == 30:
+                print('Введенный профиль пользователя является приватным')
             else:
-                photos_dict[str(each_photo['likes']['count']) + ' ' + datetime.utcfromtimestamp(each_photo['date']).strftime('%d.%m.%Y')] = each_photo['sizes']
-            count += 1
-            if count == numb_of_img:
-                break
-        return photos_dict
+                error_msg = response['error']['error_msg']
+                print(f'Возникла ошибка при вводе токена ВК или ID пользователя.\nТекст ошибки: {error_msg}')
+            return False
 
     def sort_photos(self):
         photos_dict = self.get_photos()
-        for each_photo_name in tqdm(photos_dict, desc='Getting and sorting images from vk.com', bar_format='{desc} {bar} {percentage}%'):
-            size_dict = {}
-            for size in photos_dict[each_photo_name]:
-                size_dict[size['height']] = [size['type'], size['url']]
-            biggest_size = sorted(size_dict.items())[-1][1]
-            photos_dict[each_photo_name] = biggest_size
-        return photos_dict
+        if photos_dict:
+            for each_photo_name in tqdm(photos_dict, desc='Getting and sorting images from vk.com', bar_format='{desc} {bar} {percentage}%'):
+                size_dict = {}
+                for size in photos_dict[each_photo_name]:
+                    size_dict[size['height']] = [size['type'], size['url']]
+                biggest_size = sorted(size_dict.items())[-1][1]
+                photos_dict[each_photo_name] = biggest_size
+            return photos_dict
+        else:
+            return False
 
 
 class Yandex:
@@ -55,7 +70,9 @@ class Yandex:
     def create_folder(self):
         res = requests.put(f'{self.url}?path="ФотоРезерв"', headers=self.headers)
         if res.status_code != 201 and res.status_code != 409:
-            print(res.json()['message'])
+            error_msg = res.json()['message']
+            print(f'Введён некорректный токен Яндекс Полигона.\nОписание ошибки: {error_msg}')
+            return False
 
     def upload_image(self, file_name, file_url, replace=True):
         res = requests.get(f'{self.url}/upload?path="ФотоРезерв"/{file_name}.jpg&overwrite={replace}', headers=self.headers).json()
@@ -67,14 +84,16 @@ class Yandex:
             print(res)
 
     def upload_images(self, files):
-        self.create_folder()
-        uploaded_files = []
-        for each_file in tqdm(files, desc='Uploading images to YandexDisk', bar_format='{desc} {bar} {percentage}% | {n_fmt}/{total_fmt} images uploaded'):
-            self.upload_image(each_file, files[each_file][1])
-            size = files[each_file][0]
-            uploaded_files += [{"file_name": f'{each_file}.jpg', "size": f'{size}'}]
-        with open('uploaded_files.json', 'w') as json_file:
-            json.dump(uploaded_files, json_file, indent=4)
+        if files and self.create_folder() is None:
+            uploaded_files = []
+            for each_file in tqdm(files, desc='Uploading images to YandexDisk', bar_format='{desc} {bar} {percentage}% | {n_fmt}/{total_fmt} images uploaded'):
+                self.upload_image(each_file, files[each_file][1])
+                size = files[each_file][0]
+                uploaded_files += [{"file_name": f'{each_file}.jpg', "size": f'{size}'}]
+            with open('uploaded_files.json', 'w') as json_file:
+                json.dump(uploaded_files, json_file, indent=4)
+        else:
+            print('При вводе данных были допущены ошибки, программа будет закрыта')
 
 
 vk_access_token = input('Введите токен ВК: ')
